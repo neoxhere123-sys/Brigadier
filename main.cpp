@@ -16,51 +16,61 @@
 #include <QDesktopServices>
 #include <QUrl>
 
+// 1. MUST COME FIRST: The Custom View
+class MyWebEngineView : public QWebEngineView {
+    Q_OBJECT
+public:
+    MyWebEngineView(QWidget *parent = nullptr) : QWebEngineView(parent) {}
+
+protected:
+    QWebEngineView *createWindow(QWebEngineType type) override {
+        Q_UNUSED(type);
+        return this; // Force target="_blank" into same tab
+    }
+};
+
+// 2. MUST COME SECOND: The Main Browser Window
 class Browser : public QMainWindow {
     Q_OBJECT
 public:
-    Browser() {
-        // --- 1. Tabs Manager Setup ---
+    Browser(QWidget *parent = nullptr) : QMainWindow(parent) {
+        // Tabs Setup
         tabs = new QTabWidget(this);
         tabs->setTabsClosable(true);
-        tabs->setMovable(true); // Fancy touch
+        tabs->setMovable(true);
         setCentralWidget(tabs);
 
-        // The "+" button for new tabs
+        // New Tab Button
         QToolButton *newTabBtn = new QToolButton();
         newTabBtn->setText("+");
-        newTabBtn->setCursor(Qt::PointingHandCursor);
-        newTabBtn->setStyleSheet("QToolButton:hover { background-color: #444; }"); // Basic hover animation
         tabs->setCornerWidget(newTabBtn, Qt::TopLeftCorner);
 
-        // --- 2. Persistent Storage ---
-        // This keeps you logged into sites like GitHub/YouTube
+        // Persistence
         QString storagePath = QDir::homePath() + "/.local/share/BrowserProject/storage";
         QWebEngineProfile::defaultProfile()->setPersistentStoragePath(storagePath);
         QWebEngineProfile::defaultProfile()->setPersistentCookiesPolicy(QWebEngineProfile::AllowPersistentCookies);
 
-        // --- 3. Downloads Shortcut ---
+        // Shortcut
         new QShortcut(QKeySequence("Ctrl+J"), this, SLOT(showDownloads()));
 
-        // Signals
-        connect(newTabBtn, &QToolButton::clicked, this, &Browser::addNewTab);
+        // Connections
+        connect(newTabBtn, &QToolButton::clicked, this, [=]() { addNewTab(); });
         connect(tabs, &QTabWidget::tabCloseRequested, this, &Browser::closeTab);
         
-        // Open initial tab
-        addNewTab();
+        addNewTab(QUrl("https://google.com"));
     }
 
 public slots:
     void addNewTab(const QUrl &url = QUrl("https://google.com")) {
-        MyWebEngineView *view = new MyWebEngineView();
+        MyWebEngineView *view = new MyWebEngineView(this);
         view->load(url);
         
-        int index = tabs->addTab(view, "New Tab");
+        int index = tabs->addTab(view, "Loading...");
         tabs->setCurrentIndex(index);
 
-        // Update tab title when page loads
-        connect(view, &QWebEngineView::titleChanged, [=](const QString &title) {
-            tabs->setTabText(tabs->indexOf(view), title);
+        connect(view, &QWebEngineView::titleChanged, this, [=](const QString &title) {
+            int idx = tabs->indexOf(view);
+            if (idx != -1) tabs->setTabText(idx, title);
         });
     }
 
@@ -70,16 +80,26 @@ public slots:
             tabs->removeTab(index);
             delete w;
         } else {
-            close(); // Exit if last tab closed
+            this->close();
         }
     }
 
     void showDownloads() {
-        // For Beta v2, we can just open the Downloads folder in the file manager
-        // A full UI manager can be added in v2.1
         QDesktopServices::openUrl(QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)));
     }
 
 private:
     QTabWidget *tabs;
 };
+
+// 3. MAIN FUNCTION
+int main(int argc, char *argv[]) {
+    QApplication app(argc, argv);
+    Browser browser;
+    browser.setWindowTitle("Browser Beta v2");
+    browser.resize(1200, 800);
+    browser.show();
+    return app.exec();
+}
+
+#include "main.moc"
