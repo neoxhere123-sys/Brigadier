@@ -1,63 +1,73 @@
-#include <QApplication>
-#include <QMainWindow>
-#include <QVBoxLayout>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QWebEngineView>
-#include <QHBoxLayout>
+#include <QTabWidget>
+#include <QToolButton>
+#include <QShortcut>
+#include <QWebEngineProfile>
+#include <QWebEngineSettings>
 
 class Browser : public QMainWindow {
+    Q_OBJECT
 public:
     Browser() {
-        // 1. Create the widgets
-        QWidget *centralWidget = new QWidget(this);
-        QVBoxLayout *layout = new QVBoxLayout(centralWidget);
-        
-        QHBoxLayout *controlsLayout = new QHBoxLayout();
-        addressBar = new QLineEdit();
-        QPushButton *goButton = new QPushButton("Go");
-        
-        webView = new QWebEngineView();
+        // --- 1. Tabs Manager Setup ---
+        tabs = new QTabWidget(this);
+        tabs->setTabsClosable(true);
+        tabs->setMovable(true); // Fancy touch
+        setCentralWidget(tabs);
 
-        // 2. Set up the layout
-        controlsLayout->addWidget(addressBar);
-        controlsLayout->addWidget(goButton);
-        
-        layout->addLayout(controlsLayout);
-        layout->addWidget(webView);
-        
-        setCentralWidget(centralWidget);
+        // The "+" button for new tabs
+        QToolButton *newTabBtn = new QToolButton();
+        newTabBtn->setText("+");
+        newTabBtn->setCursor(Qt::PointingHandCursor);
+        newTabBtn->setStyleSheet("QToolButton:hover { background-color: #444; }"); // Basic hover animation
+        tabs->setCornerWidget(newTabBtn, Qt::TopLeftCorner);
 
-        // 3. Connect signals and slots
-        connect(goButton, &QPushButton::clicked, this, &Browser::loadUrl);
-        connect(addressBar, &QLineEdit::returnPressed, this, &Browser::loadUrl);
+        // --- 2. Persistent Storage ---
+        // This keeps you logged into sites like GitHub/YouTube
+        QString storagePath = QDir::homePath() + "/.local/share/BrowserProject/storage";
+        QWebEngineProfile::defaultProfile()->setPersistentStoragePath(storagePath);
+        QWebEngineProfile::defaultProfile()->setPersistentCookiesPolicy(QWebEngineProfile::AllowPersistentCookies);
 
-        // Default page
-        addressBar->setText("https://www.google.com");
-        loadUrl();
+        // --- 3. Downloads Shortcut ---
+        new QShortcut(QKeySequence("Ctrl+J"), this, SLOT(showDownloads()));
+
+        // Signals
+        connect(newTabBtn, &QToolButton::clicked, this, &Browser::addNewTab);
+        connect(tabs, &QTabWidget::tabCloseRequested, this, &Browser::closeTab);
+        
+        // Open initial tab
+        addNewTab();
     }
 
-private slots:
-    void loadUrl() {
-        QString url = addressBar->text();
-        if (!url.startsWith("http")) {
-            url = "https://" + url;
+public slots:
+    void addNewTab(const QUrl &url = QUrl("https://google.com")) {
+        MyWebEngineView *view = new MyWebEngineView();
+        view->load(url);
+        
+        int index = tabs->addTab(view, "New Tab");
+        tabs->setCurrentIndex(index);
+
+        // Update tab title when page loads
+        connect(view, &QWebEngineView::titleChanged, [=](const QString &title) {
+            tabs->setTabText(tabs->indexOf(view), title);
+        });
+    }
+
+    void closeTab(int index) {
+        if (tabs->count() > 1) {
+            QWidget *w = tabs->widget(index);
+            tabs->removeTab(index);
+            delete w;
+        } else {
+            close(); // Exit if last tab closed
         }
-        webView->load(QUrl(url));
+    }
+
+    void showDownloads() {
+        // For Beta v2, we can just open the Downloads folder in the file manager
+        // A full UI manager can be added in v2.1
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)));
     }
 
 private:
-    QLineEdit *addressBar;
-    QWebEngineView *webView;
+    QTabWidget *tabs;
 };
-
-int main(int argc, char *argv[]) {
-    QApplication app(argc, argv);
-    
-    Browser browser;
-    browser.setWindowTitle("Browser");
-    browser.resize(1024, 768);
-    browser.show();
-    
-    return app.exec();
-}
