@@ -1,8 +1,20 @@
+#include <QApplication>
+#include <QMainWindow>
 #include <QTabWidget>
 #include <QToolButton>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QShortcut>
+#include <QWebEngineView>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
+#include <QWebEngineDownloadRequest>
+#include <QDir>
+#include <QStandardPaths>
+#include <QDesktopServices>
+#include <QUrl>
 
 class Browser : public QMainWindow {
     Q_OBJECT
