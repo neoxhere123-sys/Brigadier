@@ -1,0 +1,6 @@
+Browser
+*.o
+*.moc
+moc_*
+.qmake.stash
+Makefile
