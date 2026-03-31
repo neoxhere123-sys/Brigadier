@@ -2,31 +2,35 @@
 #include <QMainWindow>
 #include <QTabWidget>
 #include <QToolButton>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <QShortcut>
 #include <QWebEngineView>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include <QWebEnginePage>
 #include <QWebEngineDownloadRequest>
+#include <QWebEngineFullScreenRequest>
 #include <QDir>
 #include <QStandardPaths>
 #include <QDesktopServices>
 #include <QUrl>
 
-// 1. Custom Web View to handle target="_blank"
+// 1. Custom View to handle both Fullscreen and Tab behavior
 class MyWebEngineView : public QWebEngineView {
     Q_OBJECT
 public:
-    MyWebEngineView(QWidget *parent = nullptr) : QWebEngineView(parent) {}
+    MyWebEngineView(QWidget *parent = nullptr) : QWebEngineView(parent) {
+        // Enable Fullscreen Support in Settings
+        settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+        
+        // Handle Fullscreen Signal
+        connect(page(), &QWebEnginePage::fullScreenRequested, this, [](QWebEngineFullScreenRequest request) {
+            request.accept(); // This tells the browser "Yes, you can go fullscreen"
+        });
+    }
 
 protected:
     QWebEngineView *createWindow(QWebEnginePage::WebWindowType type) override {
         Q_UNUSED(type);
-        // Returns the same view to force links to open in the current tab
         return this; 
     }
 };
@@ -36,57 +40,51 @@ class Browser : public QMainWindow {
     Q_OBJECT
 public:
     Browser(QWidget *parent = nullptr) : QMainWindow(parent) {
-        // --- Tabs Manager ---
         tabs = new QTabWidget(this);
         tabs->setTabsClosable(true);
         tabs->setMovable(true);
-        tabs->setDocumentMode(true); // Sleeker look on Arch/KDE/Gnome
+        tabs->setDocumentMode(true);
         setCentralWidget(tabs);
 
-        // --- "+" Tab Button ---
         QToolButton *newTabBtn = new QToolButton();
         newTabBtn->setText("+");
-        newTabBtn->setCursor(Qt::PointingHandCursor);
-        newTabBtn->setStyleSheet("QToolButton { padding: 4px; font-weight: bold; } QToolButton:hover { background: #555; }");
         tabs->setCornerWidget(newTabBtn, Qt::TopLeftCorner);
 
-        // --- Persistent Storage (Cache/Cookies) ---
+        // --- Persistence ---
         QString storagePath = QDir::homePath() + "/.local/share/BrowserProject/storage";
-        QWebEngineProfile *defaultProfile = QWebEngineProfile::defaultProfile();
-        defaultProfile->setPersistentStoragePath(storagePath);
-        defaultProfile->setPersistentCookiesPolicy(QWebEngineProfile::AllowPersistentCookies);
+        QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
+        profile->setPersistentStoragePath(storagePath);
+        profile->setPersistentCookiesPolicy(QWebEngineProfile::AllowPersistentCookies);
 
-        // --- Shortcut for Downloads (Ctrl+J) ---
+        // --- NEW: Download Manager ---
+        connect(profile, &QWebEngineProfile::downloadRequested, this, [](QWebEngineDownloadRequest *download) {
+            // Suggest the default "Downloads" folder on your Arch system
+            QString path = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) 
+                           + "/" + download->suggestedFileName();
+            
+            download->setDownloadDirectory(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
+            download->setDownloadFileName(download->suggestedFileName());
+            download->accept(); // Starts the download
+        });
+
         new QShortcut(QKeySequence("Ctrl+J"), this, SLOT(showDownloads()));
-
-        // --- Connections ---
         connect(newTabBtn, &QToolButton::clicked, this, [this]() { addNewTab(); });
         connect(tabs, &QTabWidget::tabCloseRequested, this, &Browser::closeTab);
         
-        // Initial Tab
-        addNewTab(QUrl("https://google.com"));
+        addNewTab(QUrl("https://youtube.com"));
     }
 
 public slots:
     void addNewTab(const QUrl &url = QUrl("https://google.com")) {
         MyWebEngineView *view = new MyWebEngineView(this);
-        
-        // Settings: Enable common features
-        view->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
-        view->settings()->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
-
         view->load(url);
         
-        int index = tabs->addTab(view, "New Tab");
+        int index = tabs->addTab(view, "Loading...");
         tabs->setCurrentIndex(index);
 
-        // Update tab title dynamically
         connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString &title) {
             int idx = tabs->indexOf(view);
-            if (idx != -1) {
-                QString shortTitle = title.length() > 20 ? title.left(17) + "..." : title;
-                tabs->setTabText(idx, shortTitle);
-            }
+            if (idx != -1) tabs->setTabText(idx, title.left(20));
         });
     }
 
@@ -96,31 +94,24 @@ public slots:
             tabs->removeTab(index);
             delete w;
         } else {
-            this->close(); // Exit app if last tab is closed
+            this->close();
         }
     }
 
     void showDownloads() {
-        QString path = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
-        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)));
     }
 
 private:
     QTabWidget *tabs;
 };
 
-// 3. Execution Entry Point
 int main(int argc, char *argv[]) {
-    // Crucial for high-DPI screens on Linux
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    
     QApplication app(argc, argv);
-    
     Browser browser;
-    browser.setWindowTitle("Browser Beta v2");
-    browser.resize(1200, 800);
+    browser.setWindowTitle("Browser Pro v1.0");
+    browser.resize(1280, 720);
     browser.show();
-    
     return app.exec();
 }
 
