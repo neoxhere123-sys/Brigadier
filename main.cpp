@@ -14,17 +14,16 @@
 #include <QDesktopServices>
 #include <QUrl>
 
-// 1. Custom View to handle both Fullscreen and Tab behavior
 class MyWebEngineView : public QWebEngineView {
     Q_OBJECT
 public:
-    MyWebEngineView(QWidget *parent = nullptr) : QWebEngineView(parent) {
-        // Enable Fullscreen Support in Settings
+    MyWebEngineView(QWebEngineProfile *profile, QWidget *parent = nullptr) : QWebEngineView(profile, parent) {
         settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+        settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+        settings()->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
         
-        // Handle Fullscreen Signal
         connect(page(), &QWebEnginePage::fullScreenRequested, this, [](QWebEngineFullScreenRequest request) {
-            request.accept(); // This tells the browser "Yes, you can go fullscreen"
+            request.accept();
         });
     }
 
@@ -35,7 +34,6 @@ protected:
     }
 };
 
-// 2. Main Browser Logic
 class Browser : public QMainWindow {
     Q_OBJECT
 public:
@@ -50,33 +48,35 @@ public:
         newTabBtn->setText("+");
         tabs->setCornerWidget(newTabBtn, Qt::TopLeftCorner);
 
-        // --- Persistence ---
-        QString storagePath = QDir::homePath() + "/.local/share/BrowserProject/storage";
+        // --- FIXED PERSISTENT STORAGE ---
+        // Using QDir::homePath() to ensure it hits /home/naksh/ properly
+        QString storagePath = QDir::homePath() + "/.local/share/Brigadier/storage";
+        QDir().mkpath(storagePath); // Physically create the folder if it doesn't exist
+
         QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
         profile->setPersistentStoragePath(storagePath);
+        profile->setCachePath(storagePath + "/cache");
         profile->setPersistentCookiesPolicy(QWebEngineProfile::AllowPersistentCookies);
 
-        // --- NEW: Download Manager ---
+        // --- Download Manager ---
         connect(profile, &QWebEngineProfile::downloadRequested, this, [](QWebEngineDownloadRequest *download) {
-            // Suggest the default "Downloads" folder on your Arch system
-            QString path = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) 
-                           + "/" + download->suggestedFileName();
-            
             download->setDownloadDirectory(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
             download->setDownloadFileName(download->suggestedFileName());
-            download->accept(); // Starts the download
+            download->accept();
         });
 
-        new QShortcut(QKeySequence("Ctrl+J"), this, SLOT(showDownloads()));
         connect(newTabBtn, &QToolButton::clicked, this, [this]() { addNewTab(); });
         connect(tabs, &QTabWidget::tabCloseRequested, this, &Browser::closeTab);
+        new QShortcut(QKeySequence("Ctrl+J"), this, SLOT(showDownloads()));
         
-        addNewTab(QUrl("https://youtube.com"));
+        // Changed base website to google.com
+        addNewTab(QUrl("https://google.com"));
     }
 
 public slots:
     void addNewTab(const QUrl &url = QUrl("https://google.com")) {
-        MyWebEngineView *view = new MyWebEngineView(this);
+        // We pass the defaultProfile() to the view to ensure storage is used
+        MyWebEngineView *view = new MyWebEngineView(QWebEngineProfile::defaultProfile(), this);
         view->load(url);
         
         int index = tabs->addTab(view, "Loading...");
@@ -109,7 +109,8 @@ private:
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     Browser browser;
-    browser.setWindowTitle("Browser Pro v1.0");
+    // Window Title updated to Brigadier Beta v2
+    browser.setWindowTitle("Brigadier Beta v2");
     browser.resize(1280, 720);
     browser.show();
     return app.exec();
