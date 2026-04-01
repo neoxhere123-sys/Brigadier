@@ -17,10 +17,11 @@
 class MyWebEngineView : public QWebEngineView {
     Q_OBJECT
 public:
+    // Ensure we use the profile passed to it
     MyWebEngineView(QWebEngineProfile *profile, QWidget *parent = nullptr) : QWebEngineView(profile, parent) {
         settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
         settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
-        settings()->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
+        settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
         
         connect(page(), &QWebEnginePage::fullScreenRequested, this, [](QWebEngineFullScreenRequest request) {
             request.accept();
@@ -48,17 +49,21 @@ public:
         newTabBtn->setText("+");
         tabs->setCornerWidget(newTabBtn, Qt::TopLeftCorner);
 
-        // --- FIXED PERSISTENT STORAGE ---
-        // Using QDir::homePath() to ensure it hits /home/naksh/ properly
-        QString storagePath = QDir::homePath() + "/.local/share/Brigadier/storage";
-        QDir().mkpath(storagePath); // Physically create the folder if it doesn't exist
-
+        // --- Setup the Profile for the whole Browser ---
         QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
+        
+        // Use an absolute path for Brigadier storage
+        QString storagePath = QDir::homePath() + "/.local/share/Brigadier/storage";
+        QDir().mkpath(storagePath); 
+        
         profile->setPersistentStoragePath(storagePath);
         profile->setCachePath(storagePath + "/cache");
-        profile->setPersistentCookiesPolicy(QWebEngineProfile::AllowPersistentCookies);
+        
+        // CRITICAL FIX FOR LOGINS:
+        // AllowPersistentCookies = standard. ForcePersistentCookies = aggressive.
+        profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
 
-        // --- Download Manager ---
+        // Download handling
         connect(profile, &QWebEngineProfile::downloadRequested, this, [](QWebEngineDownloadRequest *download) {
             download->setDownloadDirectory(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
             download->setDownloadFileName(download->suggestedFileName());
@@ -67,24 +72,22 @@ public:
 
         connect(newTabBtn, &QToolButton::clicked, this, [this]() { addNewTab(); });
         connect(tabs, &QTabWidget::tabCloseRequested, this, &Browser::closeTab);
-        new QShortcut(QKeySequence("Ctrl+J"), this, SLOT(showDownloads()));
         
-        // Changed base website to google.com
         addNewTab(QUrl("https://google.com"));
     }
 
 public slots:
     void addNewTab(const QUrl &url = QUrl("https://google.com")) {
-        // We pass the defaultProfile() to the view to ensure storage is used
+        // Use the defaultProfile which we configured above
         MyWebEngineView *view = new MyWebEngineView(QWebEngineProfile::defaultProfile(), this);
         view->load(url);
         
-        int index = tabs->addTab(view, "Loading...");
+        int index = tabs->addTab(view, "New Tab");
         tabs->setCurrentIndex(index);
 
         connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString &title) {
             int idx = tabs->indexOf(view);
-            if (idx != -1) tabs->setTabText(idx, title.left(20));
+            if (idx != -1) tabs->setTabText(idx, title.left(15));
         });
     }
 
@@ -98,21 +101,22 @@ public slots:
         }
     }
 
-    void showDownloads() {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)));
-    }
-
 private:
     QTabWidget *tabs;
 };
 
 int main(int argc, char *argv[]) {
+    // High DPI support for Arch Linux
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+
     QApplication app(argc, argv);
+    
     Browser browser;
-    // Window Title updated to Brigadier Beta v2
     browser.setWindowTitle("Brigadier Beta v2");
     browser.resize(1280, 720);
     browser.show();
+    
     return app.exec();
 }
 
