@@ -4,7 +4,6 @@
 #include <QToolButton>
 #include <QToolBar>
 #include <QProgressBar>
-#include <QLabel>
 #include <QStatusBar>
 #include <QShortcut>
 #include <QWebEngineView>
@@ -12,12 +11,35 @@
 #include <QWebEngineSettings>
 #include <QWebEnginePage>
 #include <QWebEngineDownloadRequest>
+#include <QWebEngineFullScreenRequest>
 #include <QDir>
 #include <QStandardPaths>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QStyle>
 #include <QAction>
+
+// 1. Custom View restored to handle Fullscreen Permission
+class MyWebEngineView : public QWebEngineView {
+    Q_OBJECT
+public:
+    MyWebEngineView(QWidget *parent = nullptr) : QWebEngineView(parent) {
+        settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+        settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+        
+        // Handle the YouTube Fullscreen Request
+        connect(page(), &QWebEnginePage::fullScreenRequested, this, [](QWebEngineFullScreenRequest request) {
+            request.accept();
+        });
+    }
+
+protected:
+    // Ensure links that want to open in new windows stay in the current tab
+    QWebEngineView *createWindow(QWebEnginePage::WebWindowType type) override {
+        Q_UNUSED(type);
+        return this; 
+    }
+};
 
 class Browser : public QMainWindow {
     Q_OBJECT
@@ -31,6 +53,7 @@ public:
 
         setupTopBar();
 
+        // Beta Build: No persistent storage
         QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
         profile->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
 
@@ -54,12 +77,12 @@ private slots:
         spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         toolBar->addWidget(spacer);
 
-        // FIX: Using SP_DialogSaveButton for downloads
+        // Downloads Action
         QAction *dlAction = new QAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "Downloads", this);
         connect(dlAction, &QAction::triggered, this, &Browser::showDownloadsFolder);
         toolBar->addAction(dlAction);
 
-        // Hamburger-ish icon
+        // Config Action (Hamburger)
         QAction *cfgAction = new QAction(style()->standardIcon(QStyle::SP_FileDialogContentsView), "Config", this);
         connect(cfgAction, &QAction::triggered, this, &Browser::openConfigPage);
         toolBar->addAction(cfgAction);
@@ -76,14 +99,14 @@ private slots:
 
         connect(download, &QWebEngineDownloadRequest::receivedBytesChanged, this, [this, download, progress]() {
             if (download->totalBytes() > 0) {
-                int percent = (download->receivedBytes() * 100) / download->totalBytes();
+                int percent = (int)((download->receivedBytes() * 100) / download->totalBytes());
                 progress->setValue(percent);
                 statusBar()->showMessage(QString("Downloading: %1%").arg(percent));
             }
         });
 
         connect(download, &QWebEngineDownloadRequest::stateChanged, this, [this, progress](QWebEngineDownloadRequest::DownloadState state) {
-            // FIX: Using DownloadCompleted instead of DownloadFinished
+            // Qt 6.8+ uses DownloadCompleted
             if (state == QWebEngineDownloadRequest::DownloadCompleted) {
                 statusBar()->removeWidget(progress);
                 statusBar()->showMessage("Download Complete!", 5000);
@@ -93,16 +116,17 @@ private slots:
     }
 
     void openConfigPage() {
-        QString html = "<html><body style='background:#121212;color:white;font-family:sans-serif;text-align:center;padding-top:50px;'>"
+        QString html = "<html><body style='background:#121212;color:white;font-family:sans-serif;text-align:center;padding-top:100px;'>"
                        "<h1>Config</h1>"
-                       "<p>Welp, there's literally NOTHING, to change, go grab the source from <br>"
-                       "<a style='color:#00afff;' href='https://github.com/neoxhere123-sys/Brigadier'>"
+                       "<p style='font-size:18px;'>Welp, there's literally NOTHING, to change, go grab the source from <br><br>"
+                       "<a style='color:#00afff; text-decoration:none;' href='https://github.com/neoxhere123-sys/Brigadier'>"
                        "https://github.com/neoxhere123-sys/Brigadier</a> and edit it yourself.</p>"
                        "</body></html>";
-        QWebEngineView *view = new QWebEngineView(this);
+        
+        MyWebEngineView *view = new MyWebEngineView(this);
         view->setHtml(html);
-        tabs->addTab(view, "Config");
-        tabs->setCurrentWidget(view);
+        int index = tabs->addTab(view, "Config");
+        tabs->setCurrentIndex(index);
     }
 
     void showDownloadsFolder() {
@@ -110,10 +134,11 @@ private slots:
     }
 
     void addNewTab(const QUrl &url = QUrl("https://google.com")) {
-        QWebEngineView *view = new QWebEngineView(this);
+        MyWebEngineView *view = new MyWebEngineView(this);
         view->load(url);
         int index = tabs->addTab(view, "New Tab");
         tabs->setCurrentIndex(index);
+
         connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString &title) {
             int idx = tabs->indexOf(view);
             if (idx != -1) tabs->setTabText(idx, title.left(15));
@@ -135,7 +160,7 @@ private:
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     Browser browser;
-    browser.setWindowTitle("Brigadier Beta v2.5");
+    browser.setWindowTitle("Brigadier Beta v2.6");
     browser.resize(1280, 720);
     browser.show();
     return app.exec();
