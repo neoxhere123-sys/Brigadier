@@ -5,7 +5,6 @@
 #include <QToolBar>
 #include <QProgressBar>
 #include <QStatusBar>
-#include <QShortcut>
 #include <QWebEngineView>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
@@ -19,22 +18,27 @@
 #include <QStyle>
 #include <QAction>
 
-// 1. Custom View restored to handle Fullscreen Permission
 class MyWebEngineView : public QWebEngineView {
     Q_OBJECT
 public:
     MyWebEngineView(QWidget *parent = nullptr) : QWebEngineView(parent) {
         settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
-        settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
         
-        // Handle the YouTube Fullscreen Request
-        connect(page(), &QWebEnginePage::fullScreenRequested, this, [](QWebEngineFullScreenRequest request) {
-            request.accept();
+        // Handle the request to fix the "not covering screen" bug
+        connect(page(), &QWebEnginePage::fullScreenRequested, this, [this](QWebEngineFullScreenRequest request) {
+            if (request.toggleOn()) {
+                // Tell the window to actually hide the OS panels and go big
+                if (window()) window()->showFullScreen();
+                request.accept();
+            } else {
+                // Bring the window back to normal when exiting fullscreen
+                if (window()) window()->showNormal();
+                request.accept();
+            }
         });
     }
 
 protected:
-    // Ensure links that want to open in new windows stay in the current tab
     QWebEngineView *createWindow(QWebEnginePage::WebWindowType type) override {
         Q_UNUSED(type);
         return this; 
@@ -53,7 +57,6 @@ public:
 
         setupTopBar();
 
-        // Beta Build: No persistent storage
         QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
         profile->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
 
@@ -65,27 +68,41 @@ public:
 
 private slots:
     void setupTopBar() {
-        QToolBar *toolBar = addToolBar("Main Toolbar");
-        toolBar->setMovable(false);
+        mainToolBar = addToolBar("Main Toolbar");
+        mainToolBar->setMovable(false);
 
         QToolButton *newTabBtn = new QToolButton();
         newTabBtn->setText("+");
         connect(newTabBtn, &QToolButton::clicked, this, [this]() { addNewTab(); });
-        toolBar->addWidget(newTabBtn);
+        mainToolBar->addWidget(newTabBtn);
 
         QWidget* spacer = new QWidget();
         spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        toolBar->addWidget(spacer);
+        mainToolBar->addWidget(spacer);
 
-        // Downloads Action
         QAction *dlAction = new QAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "Downloads", this);
         connect(dlAction, &QAction::triggered, this, &Browser::showDownloadsFolder);
-        toolBar->addAction(dlAction);
+        mainToolBar->addAction(dlAction);
 
-        // Config Action (Hamburger)
         QAction *cfgAction = new QAction(style()->standardIcon(QStyle::SP_FileDialogContentsView), "Config", this);
         connect(cfgAction, &QAction::triggered, this, &Browser::openConfigPage);
-        toolBar->addAction(cfgAction);
+        mainToolBar->addAction(cfgAction);
+    }
+
+    // This handles the window state changes (hiding UI in fullscreen)
+    void changeEvent(QEvent *event) override {
+        if (event->type() == QEvent::WindowStateChange) {
+            if (isFullScreen()) {
+                mainToolBar->hide();
+                statusBar()->hide();
+                tabs->tabBar()->hide();
+            } else {
+                mainToolBar->show();
+                statusBar()->show();
+                tabs->tabBar()->show();
+            }
+        }
+        QMainWindow::changeEvent(event);
     }
 
     void handleDownload(QWebEngineDownloadRequest *download) {
@@ -106,7 +123,6 @@ private slots:
         });
 
         connect(download, &QWebEngineDownloadRequest::stateChanged, this, [this, progress](QWebEngineDownloadRequest::DownloadState state) {
-            // Qt 6.8+ uses DownloadCompleted
             if (state == QWebEngineDownloadRequest::DownloadCompleted) {
                 statusBar()->removeWidget(progress);
                 statusBar()->showMessage("Download Complete!", 5000);
@@ -122,11 +138,10 @@ private slots:
                        "<a style='color:#00afff; text-decoration:none;' href='https://github.com/neoxhere123-sys/Brigadier'>"
                        "https://github.com/neoxhere123-sys/Brigadier</a> and edit it yourself.</p>"
                        "</body></html>";
-        
         MyWebEngineView *view = new MyWebEngineView(this);
         view->setHtml(html);
-        int index = tabs->addTab(view, "Config");
-        tabs->setCurrentIndex(index);
+        tabs->addTab(view, "Config");
+        tabs->setCurrentWidget(view);
     }
 
     void showDownloadsFolder() {
@@ -138,7 +153,6 @@ private slots:
         view->load(url);
         int index = tabs->addTab(view, "New Tab");
         tabs->setCurrentIndex(index);
-
         connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString &title) {
             int idx = tabs->indexOf(view);
             if (idx != -1) tabs->setTabText(idx, title.left(15));
@@ -155,6 +169,7 @@ private slots:
 
 private:
     QTabWidget *tabs;
+    QToolBar *mainToolBar;
 };
 
 int main(int argc, char *argv[]) {
