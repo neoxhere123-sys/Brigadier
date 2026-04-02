@@ -16,13 +16,19 @@
 MyWebEngineView::MyWebEngineView(QWidget *parent) : QWebEngineView(parent) {
     settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
     connect(page(), &QWebEnginePage::fullScreenRequested, this, [](QWebEngineFullScreenRequest request) {
-        if (request.toggleOn()) { if (auto w = qobject_cast<QMainWindow*>(qApp->activeWindow())) w->showFullScreen(); }
-        else { if (auto w = qobject_cast<QMainWindow*>(qApp->activeWindow())) w->showNormal(); }
+        if (request.toggleOn()) { 
+            if (auto w = qobject_cast<QMainWindow*>(qApp->activeWindow())) w->showFullScreen(); 
+        } else { 
+            if (auto w = qobject_cast<QMainWindow*>(qApp->activeWindow())) w->showNormal(); 
+        }
         request.accept();
     });
 }
 
-QWebEngineView* MyWebEngineView::createWindow(QWebEnginePage::WebWindowType type) { return this; }
+QWebEngineView* MyWebEngineView::createWindow(QWebEnginePage::WebWindowType type) { 
+    Q_UNUSED(type);
+    return this; 
+}
 
 Browser::Browser(QWidget *parent) : QMainWindow(parent) {
     tabs = new QTabWidget(this);
@@ -30,7 +36,6 @@ Browser::Browser(QWidget *parent) : QMainWindow(parent) {
     tabs->setMovable(true);
     tabs->setDocumentMode(true);
     setCentralWidget(tabs);
-
     setupTopBar();
 
     connect(QWebEngineProfile::defaultProfile(), &QWebEngineProfile::downloadRequested, this, &Browser::handleDownload);
@@ -49,6 +54,7 @@ void Browser::setupTopBar() {
     connect(forwardAction, &QAction::triggered, this, [this]() { if(currentView()) currentView()->forward(); });
 
     addressBar = new QLineEdit(this);
+    addressBar->setPlaceholderText("Search or enter URL...");
     connect(addressBar, &QLineEdit::returnPressed, this, &Browser::handleAddressInput);
     mainToolBar->addWidget(addressBar);
 
@@ -63,24 +69,48 @@ void Browser::handleAddressInput() {
 }
 
 void Browser::updateAddressBar(int index) {
-    if(currentView()) addressBar->setText(currentView()->url().toString().startsWith("data") ? "" : currentView()->url().toString());
+    Q_UNUSED(index);
+    if(currentView()) {
+        QString urlStr = currentView()->url().toString();
+        addressBar->setText(urlStr.startsWith("data") ? "" : urlStr);
+    }
 }
 
-MyWebEngineView* Browser::currentView() const { return qobject_cast<MyWebEngineView*>(tabs->currentWidget()); }
+MyWebEngineView* Browser::currentView() const { 
+    return qobject_cast<MyWebEngineView*>(tabs->currentWidget()); 
+}
 
 void Browser::addNewTab(const QUrl &url) {
     MyWebEngineView *view = new MyWebEngineView(this);
-    url.isEmpty() ? view->setHtml(BRIGADIER_HOME) : view->load(url);
-    tabs->addTab(view, "New Tab");
+    if(url.isEmpty()) {
+        view->setHtml(BRIGADIER_HOME);
+    } else {
+        view->load(url);
+    }
+    
+    tabs->addTab(view, "Home");
     tabs->setCurrentWidget(view);
+    
     connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString &t){
-        int i = tabs->indexOf(view); if(i != -1) tabs->setTabText(i, t.left(10));
+        int i = tabs->indexOf(view); 
+        if(i != -1) tabs->setTabText(i, t.left(12));
     });
 }
 
-void Browser::closeTab(int index) { if(tabs->count() > 1) { delete tabs->widget(index); } else close(); }
+void Browser::closeTab(int index) { 
+    if(tabs->count() > 1) { 
+        QWidget *w = tabs->widget(index);
+        tabs->removeTab(index);
+        w->deleteLater();
+    } else {
+        close(); 
+    }
+}
 
-void Browser::handleDownload(QWebEngineDownloadRequest *d) { d->accept(); statusBar()->showMessage("Downloading...", 2000); }
+void Browser::handleDownload(QWebEngineDownloadRequest *d) { 
+    d->accept(); 
+    statusBar()->showMessage("Download started...", 2000); 
+}
 
 void Browser::changeEvent(QEvent *e) {
     if(e->type() == QEvent::WindowStateChange) {
@@ -95,7 +125,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     Browser b;
     b.setWindowTitle("Brigadier Beta v3.0");
-    b.resize(1024, 768);
+    b.resize(1280, 720);
     b.show();
     return app.exec();
 }
