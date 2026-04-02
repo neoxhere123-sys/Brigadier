@@ -3,10 +3,7 @@ TARGET = Browser
 
 QT += widgets webenginewidgets
 
+HEADERS += browser.h
 SOURCES += main.cpp
 
-# Ensure the compiler can find the headers
-INCLUDEPATH += .
-
-# Optimization for Arch
 CONFIG += c++17
