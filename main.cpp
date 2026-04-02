@@ -4,6 +4,7 @@
 #include <QTabBar>
 #include <QToolButton>
 #include <QToolBar>
+#include <QLineEdit>
 #include <QProgressBar>
 #include <QStatusBar>
 #include <QWebEngineView>
@@ -12,23 +13,54 @@
 #include <QWebEnginePage>
 #include <QWebEngineDownloadRequest>
 #include <QWebEngineFullScreenRequest>
-#include <QDir>
 #include <QStandardPaths>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QStyle>
 #include <QAction>
 #include <QEvent>
-#include <QTimer> // Added for the refresh timer
+#include <QTimer>
+
+// --- THE BRIGADIER HOME PAGE HTML ---
+const QString BRIGADIER_HOME = R"(
+<html>
+<head>
+    <style>
+        body { background: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; 
+               display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        h1 { font-size: 72px; letter-spacing: 10px; color: #ffffff; margin-bottom: 20px; text-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
+        .search-container { width: 50%; position: relative; }
+        input { width: 100%; padding: 15px 25px; border-radius: 30px; border: 1px solid #333; 
+                background: #1e1e1e; color: white; font-size: 18px; outline: none; transition: 0.3s; }
+        input:focus { border-color: #00afff; box-shadow: 0 0 15px rgba(0, 175, 255, 0.2); }
+        p { margin-top: 20px; color: #666; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h1>BRIGADIER</h1>
+    <div class="search-container">
+        <input type="text" id="search" placeholder="Search with Google or enter URL..." onkeydown="if(event.key==='Enter') search()">
+    </div>
+    <p>Beta v3.0 | Fast. Minimal. Arch Ready.</p>
+    <script>
+        function search() {
+            var val = document.getElementById('search').value;
+            if (val.includes('.') && !val.includes(' ')) {
+                window.location.href = val.startsWith('http') ? val : 'https://' + val;
+            } else {
+                window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(val);
+            }
+        }
+    </script>
+</body>
+</html>
+)";
 
 class MyWebEngineView : public QWebEngineView {
     Q_OBJECT
 public:
     MyWebEngineView(QWidget *parent = nullptr) : QWebEngineView(parent) {
         settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
-        settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
-        settings()->setAttribute(QWebEngineSettings::PlaybackRequiresUserGesture, false);
-        
         connect(page(), &QWebEnginePage::fullScreenRequested, this, [this](QWebEngineFullScreenRequest request) {
             if (request.toggleOn()) {
                 if (window()) window()->showFullScreen();
@@ -37,14 +69,9 @@ public:
                 if (window()) window()->showNormal();
                 request.accept();
             }
-            // Force the video engine to redraw after the window snaps to size
-            QTimer::singleShot(200, this, [this]() {
-                this->update();
-                this->repaint();
-            });
+            QTimer::singleShot(200, this, [this]() { this->update(); this->repaint(); });
         });
     }
-
 protected:
     QWebEngineView *createWindow(QWebEnginePage::WebWindowType type) override {
         Q_UNUSED(type);
@@ -64,13 +91,12 @@ public:
 
         setupTopBar();
 
-        QWebEngineProfile *profile = QWebEngineProfile::defaultProfile();
-        profile->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
-
-        connect(profile, &QWebEngineProfile::downloadRequested, this, &Browser::handleDownload);
+        QWebEngineProfile::defaultProfile()->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
+        connect(QWebEngineProfile::defaultProfile(), &QWebEngineProfile::downloadRequested, this, &Browser::handleDownload);
         connect(tabs, &QTabWidget::tabCloseRequested, this, &Browser::closeTab);
-        
-        addNewTab(QUrl("https://google.com"));
+        connect(tabs, &QTabWidget::currentChanged, this, &Browser::updateAddressBar);
+
+        addNewTab(); // Opens to Home Page by default
     }
 
 protected:
@@ -86,75 +112,93 @@ protected:
 
 private slots:
     void setupTopBar() {
-        mainToolBar = addToolBar("Main Toolbar");
+        mainToolBar = addToolBar("Navigation");
         mainToolBar->setMovable(false);
 
-        QToolButton *newTabBtn = new QToolButton();
-        newTabBtn->setText("+");
-        connect(newTabBtn, &QToolButton::clicked, this, [this]() { addNewTab(); });
-        mainToolBar->addWidget(newTabBtn);
+        // Back/Forward Buttons
+        backAction = mainToolBar->addAction(style()->standardIcon(QStyle::SP_ArrowBack), "Back");
+        forwardAction = mainToolBar->addAction(style()->standardIcon(QStyle::SP_ArrowForward), "Forward");
+        
+        connect(backAction, &QAction::triggered, this, [this]() {
+            if (auto *v = currentView()) v->back();
+        });
+        connect(forwardAction, &QAction::triggered, this, [this]() {
+            if (auto *v = currentView()) v->forward();
+        });
 
-        QWidget* spacer = new QWidget();
-        spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        mainToolBar->addWidget(spacer);
+        mainToolBar->addSeparator();
 
-        QAction *dlAction = new QAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "Downloads", this);
+        // Address Bar (Omnibox)
+        addressBar = new QLineEdit(this);
+        addressBar->setPlaceholderText("Enter URL or Search...");
+        connect(addressBar, &QLineEdit::returnPressed, this, &Browser::handleAddressInput);
+        mainToolBar->addWidget(addressBar);
+
+        // Standard Actions
+        QAction *newTabAct = mainToolBar->addAction("+");
+        connect(newTabAct, &QAction::triggered, this, [this]() { addNewTab(); });
+
+        mainToolBar->addSeparator();
+        
+        QAction *dlAction = mainToolBar->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "Downloads");
         connect(dlAction, &QAction::triggered, this, &Browser::showDownloadsFolder);
-        mainToolBar->addAction(dlAction);
-
-        QAction *cfgAction = new QAction(style()->standardIcon(QStyle::SP_FileDialogContentsView), "Config", this);
-        connect(cfgAction, &QAction::triggered, this, &Browser::openConfigPage);
-        mainToolBar->addAction(cfgAction);
     }
 
-    void handleDownload(QWebEngineDownloadRequest *download) {
-        download->setDownloadDirectory(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
-        download->setDownloadFileName(download->suggestedFileName());
-        download->accept();
+    void handleAddressInput() {
+        QString input = addressBar->text();
+        if (input.isEmpty()) return;
 
-        QProgressBar *progress = new QProgressBar(this);
-        progress->setMaximumWidth(200);
-        statusBar()->addWidget(progress);
-
-        connect(download, &QWebEngineDownloadRequest::receivedBytesChanged, this, [this, download, progress]() {
-            if (download->totalBytes() > 0) {
-                int percent = (int)((download->receivedBytes() * 100) / download->totalBytes());
-                progress->setValue(percent);
-            }
-        });
-
-        connect(download, &QWebEngineDownloadRequest::stateChanged, this, [this, progress](QWebEngineDownloadRequest::DownloadState state) {
-            if (state == QWebEngineDownloadRequest::DownloadCompleted) {
-                statusBar()->removeWidget(progress);
-                progress->deleteLater();
-            }
-        });
+        QUrl url;
+        if (input.contains('.') && !input.contains(' ')) {
+            url = QUrl::fromUserInput(input);
+        } else {
+            url = QUrl("https://www.google.com/search?q=" + input);
+        }
+        
+        if (auto *v = currentView()) v->load(url);
     }
 
-    void openConfigPage() {
-        QString html = "<html><body style='background:#121212;color:white;font-family:sans-serif;text-align:center;padding-top:100px;'>"
-                       "<h1>Config</h1>"
-                       "<p>Go grab the source from <br><a style='color:#00afff;' href='https://github.com/neoxhere123-sys/Brigadier'>"
-                       "https://github.com/neoxhere123-sys/Brigadier</a></p></body></html>";
+    void updateAddressBar(int index) {
+        if (auto *v = currentView()) {
+            QString url = v->url().toString();
+            // Don't show the messy HTML string if we are on home page
+            addressBar->setText(url.startsWith("data") ? "" : url);
+        }
+    }
+
+    MyWebEngineView* currentView() const {
+        return qobject_cast<MyWebEngineView*>(tabs->currentWidget());
+    }
+
+    void addNewTab(const QUrl &url = QUrl()) {
         MyWebEngineView *view = new MyWebEngineView(this);
-        view->setHtml(html);
-        tabs->addTab(view, "Config");
-        tabs->setCurrentWidget(view);
-    }
+        if (url.isEmpty()) {
+            view->setHtml(BRIGADIER_HOME);
+        } else {
+            view->load(url);
+        }
 
-    void showDownloadsFolder() {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)));
-    }
-
-    void addNewTab(const QUrl &url = QUrl("https://google.com")) {
-        MyWebEngineView *view = new MyWebEngineView(this);
-        view->load(url);
-        int index = tabs->addTab(view, "New Tab");
+        int index = tabs->addTab(view, "Home");
         tabs->setCurrentIndex(index);
+
         connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString &title) {
             int idx = tabs->indexOf(view);
             if (idx != -1) tabs->setTabText(idx, title.left(15));
         });
+
+        connect(view, &QWebEngineView::urlChanged, this, [this]() {
+            updateAddressBar(tabs->currentIndex());
+        });
+    }
+
+    void handleDownload(QWebEngineDownloadRequest *download) {
+        download->setDownloadDirectory(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
+        download->accept();
+        statusBar()->showMessage("Download started...", 3000);
+    }
+
+    void showDownloadsFolder() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)));
     }
 
     void closeTab(int index) {
@@ -168,15 +212,15 @@ private slots:
 private:
     QTabWidget *tabs;
     QToolBar *mainToolBar;
+    QLineEdit *addressBar;
+    QAction *backAction;
+    QAction *forwardAction;
 };
 
 int main(int argc, char *argv[]) {
-    // Arch Linux Fix: Disable hardware overlay for video if it flickers
-    qputenv("QT_GSTREAMER_WIDGET_VIDEOSINK", "glimagesink");
-    
     QApplication app(argc, argv);
     Browser browser;
-    browser.setWindowTitle("Brigadier Beta v2.6");
+    browser.setWindowTitle("Brigadier Beta v3.0");
     browser.resize(1280, 720);
     browser.show();
     return app.exec();

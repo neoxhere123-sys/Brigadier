@@ -16,8 +16,8 @@ CC            = gcc
 CXX           = g++
 DEFINES       = -DQT_NO_DEBUG -DQT_WEBENGINEWIDGETS_LIB -DQT_PRINTSUPPORT_LIB -DQT_WIDGETS_LIB -DQT_WEBENGINECORE_LIB -DQT_QUICK_LIB -DQT_OPENGL_LIB -DQT_GUI_LIB -DQT_WEBCHANNEL_LIB -DQT_QML_LIB -DQT_NETWORK_LIB -DQT_QMLINTEGRATION_LIB -DQT_POSITIONING_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 -Wall -Wextra -mno-direct-extern-access -D_REENTRANT $(DEFINES)
-CXXFLAGS      = -pipe -O2 -Wall -Wextra -mno-direct-extern-access -D_REENTRANT $(DEFINES)
-INCPATH       = -I. -I/usr/include/qt6 -I/usr/include/qt6/QtWebEngineWidgets -I/usr/include/qt6/QtPrintSupport -I/usr/include/qt6/QtWidgets -I/usr/include/qt6/QtWebEngineCore -I/usr/include/qt6/QtQuick -I/usr/include/qt6/QtOpenGL -I/usr/include/qt6/QtGui -I/usr/include/qt6/QtWebChannel -I/usr/include/qt6/QtQml -I/usr/include/qt6/QtNetwork -I/usr/include/qt6/QtQmlIntegration -I/usr/include/qt6/QtPositioning -I/usr/include/qt6/QtCore -I. -I/usr/lib/qt6/mkspecs/linux-g++
+CXXFLAGS      = -pipe -O2 -std=gnu++1z -Wall -Wextra -mno-direct-extern-access -D_REENTRANT $(DEFINES)
+INCPATH       = -I. -I. -I/usr/include/qt6 -I/usr/include/qt6/QtWebEngineWidgets -I/usr/include/qt6/QtPrintSupport -I/usr/include/qt6/QtWidgets -I/usr/include/qt6/QtWebEngineCore -I/usr/include/qt6/QtQuick -I/usr/include/qt6/QtOpenGL -I/usr/include/qt6/QtGui -I/usr/include/qt6/QtWebChannel -I/usr/include/qt6/QtQml -I/usr/include/qt6/QtNetwork -I/usr/include/qt6/QtQmlIntegration -I/usr/include/qt6/QtPositioning -I/usr/include/qt6/QtCore -I. -I/usr/lib/qt6/mkspecs/linux-g++
 QMAKE         = /usr/bin/qmake6
 DEL_FILE      = rm -f
 CHK_DIR_EXISTS= test -d
@@ -1017,20 +1017,14 @@ compiler_moc_predefs_make_all: moc_predefs.h
 compiler_moc_predefs_clean:
 	-$(DEL_FILE) moc_predefs.h
 moc_predefs.h: /usr/lib/qt6/mkspecs/features/data/dummy.cpp
-	g++ -pipe -O2 -Wall -Wextra -dM -E -o moc_predefs.h /usr/lib/qt6/mkspecs/features/data/dummy.cpp
+	g++ -pipe -O2 -std=gnu++1z -Wall -Wextra -dM -E -o moc_predefs.h /usr/lib/qt6/mkspecs/features/data/dummy.cpp
 
 compiler_moc_header_make_all:
 compiler_moc_header_clean:
 compiler_moc_objc_header_make_all:
 compiler_moc_objc_header_clean:
-compiler_moc_source_make_all: main.moc
+compiler_moc_source_make_all:
 compiler_moc_source_clean:
-	-$(DEL_FILE) main.moc
-main.moc: main.cpp \
-		moc_predefs.h \
-		/usr/lib/qt6/moc
-	/usr/lib/qt6/moc $(DEFINES) --include /home/naksh/Desktop/Browser/moc_predefs.h -I/usr/lib/qt6/mkspecs/linux-g++ -I/home/naksh/Desktop/Browser -I/usr/include/qt6 -I/usr/include/qt6/QtWebEngineWidgets -I/usr/include/qt6/QtPrintSupport -I/usr/include/qt6/QtWidgets -I/usr/include/qt6/QtWebEngineCore -I/usr/include/qt6/QtQuick -I/usr/include/qt6/QtOpenGL -I/usr/include/qt6/QtGui -I/usr/include/qt6/QtWebChannel -I/usr/include/qt6/QtQml -I/usr/include/qt6/QtNetwork -I/usr/include/qt6/QtQmlIntegration -I/usr/include/qt6/QtPositioning -I/usr/include/qt6/QtCore -I/usr/include/c++/15.2.1 -I/usr/include/c++/15.2.1/x86_64-pc-linux-gnu -I/usr/include/c++/15.2.1/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include-fixed -I/usr/include main.cpp -o main.moc
-
 compiler_uic_make_all:
 compiler_uic_clean:
 compiler_yacc_decl_make_all:
@@ -1039,7 +1033,7 @@ compiler_yacc_impl_make_all:
 compiler_yacc_impl_clean:
 compiler_lex_make_all:
 compiler_lex_clean:
-compiler_clean: compiler_moc_predefs_clean compiler_moc_source_clean 
+compiler_clean: compiler_moc_predefs_clean 
 
 ####### Compile
 
